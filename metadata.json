@@ -1,0 +1,5 @@
+{
+  "name": "Receipt Scanner Pro",
+  "description": "A smart tool for support teams to extract transaction details, deposit IDs, and tracking codes from bank receipts using AI.",
+  "requestFramePermissions": []
+}
