@@ -1,20 +1,20 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ReceiptData } from "../types";
 
-// ==================================================================================
-// تنظیمات کلید دسترسی
-// ==================================================================================
-// دریافت کلید از متغیر محیطی (با روش استاندارد Vite)
+// =========================================================
+// تغییر اصلاحی: اضافه کردن as any برای رفع خطای قرمز VS Code
+// =========================================================
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 if (!API_KEY) {
-  console.error("خطا: کلید API یافت نشد. لطفاً تنظیمات Netlify را چک کنید.");
+  console.error("API Key not found!");
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+const genAI = new GoogleGenerativeAI(API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
-  return new Promise((resolve, reject) => {
+const fileToGenerativePart = async (file: File) => {
+  return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result as string;
@@ -36,54 +36,30 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     const imagePart = await fileToGenerativePart(file);
 
     const prompt = `
-      Analyze this image of a bank receipt (Persian/Iranian bank). 
-      Extract the following information carefully.
-
-      1. Transaction Amount (مبلغ): Return only digits.
-      2. Deposit ID (شناسه واریز).
-      3. Tracking Code (کد رهگیری).
-      4. Reference Number (شماره پیگیری / شماره ارجاع).
-      5. Bank Name (نام بانک).
-      6. Date (تاریخ).
-      7. Time (ساعت).
-
-      If a field is not found, return null.
+      Analyze this image of a bank receipt. Extract data in JSON format:
+      {
+        "amount": "digits only",
+        "depositId": "shenase variz",
+        "trackingCode": "code rahgiri",
+        "referenceNumber": "shomare peygiri",
+        "bankName": "bank name",
+        "date": "date",
+        "time": "time"
+      }
+      Return ONLY raw JSON, no markdown formatting.
     `;
 
-    const response = await ai.models.generateContent({
-      // برگشت به نام استاندارد (حالا که کلید درست است، این کار می‌کند)
-      model: 'gemini-1.5-flash', 
-      contents: {
-        parts: [
-          imagePart,
-          { text: prompt }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            amount: { type: Type.STRING },
-            depositId: { type: Type.STRING },
-            trackingCode: { type: Type.STRING },
-            referenceNumber: { type: Type.STRING },
-            bankName: { type: Type.STRING },
-            date: { type: Type.STRING },
-            time: { type: Type.STRING }
-          }
-        }
-      }
-    });
-
-    if (response.text) {
-      return JSON.parse(response.text) as ReceiptData;
-    }
+    const result = await model.generateContent([prompt, imagePart]);
+    const response = await result.response;
+    const text = response.text();
     
-    throw new Error("No data returned from model");
+    // تمیزکاری متن پاسخ
+    const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    return JSON.parse(cleanedText) as ReceiptData;
 
   } catch (error) {
-    console.error("Error extracting receipt data:", error);
+    console.error("Error details:", error);
     throw error;
   }
 };
