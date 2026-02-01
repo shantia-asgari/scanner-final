@@ -1,65 +1,80 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ReceiptData } from "../types";
 
-// =========================================================
-// تغییر اصلاحی: اضافه کردن as any برای رفع خطای قرمز VS Code
-// =========================================================
+// دریافت کلید API (این خط تضمین می‌کند که کلید درست خوانده شود)
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
-if (!API_KEY) {
-  console.error("API Key not found!");
-}
+export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
+  console.log("Starting processing with Direct API...");
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-const fileToGenerativePart = async (file: File) => {
-  return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
+  // 1. تبدیل عکس به فرمت متنی (Base64)
+  const base64Data = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const base64Data = base64String.split(',')[1];
-      resolve({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type,
-        },
-      });
+    reader.onload = () => {
+      const result = reader.result as string;
+      // حذف قسمت های اضافی هدر فایل برای ارسال تمیز به گوگل
+      const base64 = result.split(',')[1];
+      resolve(base64);
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-};
 
-export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
+  // 2. دستور (Prompt) دقیق برای استخراج اطلاعات
+  const requestBody = {
+    contents: [{
+      parts: [
+        {
+          text: `Extract the following data from this bank receipt (Iranian/Persian) into a raw JSON object:
+                 - amount (digits only, remove separators)
+                 - depositId (شناسه واریز)
+                 - trackingCode (کد رهگیری)
+                 - referenceNumber (شماره پیگیری / ارجاع)
+                 - bankName (نام بانک)
+                 - date (YYYY/MM/DD)
+                 - time (HH:MM)
+                 
+                 Return ONLY the JSON. Do not use Markdown block codes.`
+        },
+        {
+          inline_data: {
+            mime_type: file.type,
+            data: base64Data
+          }
+        }
+      ]
+    }]
+  };
+
   try {
-    const imagePart = await fileToGenerativePart(file);
-
-    const prompt = `
-      Analyze this image of a bank receipt. Extract data in JSON format:
+    // 3. ارسال درخواست مستقیم به گوگل (بدون نیاز به نصب هیچ پکیجی!)
+    // از مدل gemini-1.5-flash استفاده می‌کنیم که سریع و دقیق است
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
       {
-        "amount": "digits only",
-        "depositId": "shenase variz",
-        "trackingCode": "code rahgiri",
-        "referenceNumber": "shomare peygiri",
-        "bankName": "bank name",
-        "date": "date",
-        "time": "time"
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
       }
-      Return ONLY raw JSON, no markdown formatting.
-    `;
+    );
 
-    const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    const text = response.text();
+    // 4. چک کردن نتیجه
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Google API Error: ${errorData.error?.message || response.status}`);
+    }
+
+    const data = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!textResponse) throw new Error("No response text from AI");
+
+    // تمیزکاری متن برای اینکه جیسون خالص باشد
+    const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     
-    // تمیزکاری متن پاسخ
-    const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-    return JSON.parse(cleanedText) as ReceiptData;
+    return JSON.parse(cleanJson) as ReceiptData;
 
   } catch (error) {
-    console.error("Error details:", error);
+    console.error("AI Error:", error);
     throw error;
   }
 };
