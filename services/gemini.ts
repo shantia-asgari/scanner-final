@@ -1,55 +1,36 @@
 import { ReceiptData } from "../types";
 
-// دریافت کلید API (این خط تضمین می‌کند که کلید درست خوانده شود)
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log("Starting processing with Direct API...");
-
-  // 1. تبدیل عکس به فرمت متنی (Base64)
-  const base64Data = await new Promise<string>((resolve, reject) => {
+  // 1. تبدیل عکس به Base64
+  const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // حذف قسمت های اضافی هدر فایل برای ارسال تمیز به گوگل
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
     reader.readAsDataURL(file);
   });
 
-  // 2. دستور (Prompt) دقیق برای استخراج اطلاعات
+  // 2. ساخت بدنه درخواست
   const requestBody = {
     contents: [{
       parts: [
         {
-          text: `Extract the following data from this bank receipt (Iranian/Persian) into a raw JSON object:
-                 - amount (digits only, remove separators)
-                 - depositId (شناسه واریز)
-                 - trackingCode (کد رهگیری)
-                 - referenceNumber (شماره پیگیری / ارجاع)
-                 - bankName (نام بانک)
-                 - date (YYYY/MM/DD)
-                 - time (HH:MM)
-                 
-                 Return ONLY the JSON. Do not use Markdown block codes.`
+          text: `Extract data from this receipt (Persian/Iranian) into raw JSON. 
+                 Fields: amount (digits only), depositId, trackingCode, referenceNumber, bankName, date, time.
+                 Do not use markdown blocks.`
         },
-        {
-          inline_data: {
-            mime_type: file.type,
-            data: base64Data
-          }
-        }
+        { inline_data: { mime_type: file.type, data: base64Data } }
       ]
     }]
   };
 
   try {
-    // 3. ارسال درخواست مستقیم به گوگل (بدون نیاز به نصب هیچ پکیجی!)
-    // از مدل gemini-1.5-flash استفاده می‌کنیم که سریع و دقیق است
+    // ============================================================
+    // تغییر حیاتی: ارسال درخواست به تونل Netlify (نه مستقیم به گوگل)
+    // این کار باعث می‌شود مشکل CORS و فیلترینگ دور زده شود.
+    // ============================================================
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+      `/api/google/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,24 +38,22 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       }
     );
 
-    // 4. چک کردن نتیجه
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Google API Error: ${errorData.error?.message || response.status}`);
+      const errorText = await response.text();
+      console.error("خطای ارتباط با سرور:", errorText);
+      throw new Error(`Server Error: ${response.status}`);
     }
 
     const data = await response.json();
     const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!textResponse) throw new Error("No response text from AI");
-
-    // تمیزکاری متن برای اینکه جیسون خالص باشد
-    const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     
+    if (!textResponse) throw new Error("No data received");
+
+    const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleanJson) as ReceiptData;
 
   } catch (error) {
-    console.error("AI Error:", error);
+    console.error("Extraction failed:", error);
     throw error;
   }
 };
