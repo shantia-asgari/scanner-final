@@ -4,29 +4,16 @@ import { ReceiptData } from "../types";
 // ==================================================================================
 // تنظیمات کلید دسترسی (API KEY CONFIGURATION)
 // ==================================================================================
-// برای استفاده خارج از محیط AI Studio، مقدار زیر را با کلید API خود جایگزین کنید.
-// مثال: const USER_PROVIDED_KEY = "AIzaSy...";
-// ==================================================================================
-const USER_PROVIDED_KEY = "YOUR_API_KEY_HERE";
 
-/**
- * Helper to safely get the API key.
- * Prioritizes process.env.API_KEY for the cloud environment.
- * Falls back to USER_PROVIDED_KEY for local/static usage.
- */
-const getApiKey = (): string => {
-  try {
-    // Check if running in a Node-like environment with process.env defined
-    if (typeof process !== "undefined" && process.env && process.env.API_KEY) {
-      return process.env.API_KEY;
-    }
-  } catch (e) {
-    // Ignore errors if process is not defined (e.g. browser without polyfills)
-  }
-  return USER_PROVIDED_KEY;
-};
+// تغییر اصلاحی: اضافه کردن 'as any' برای رفع خطای قرمز VS Code
+const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
+// بررسی وجود کلید (برای دیباگ کردن راحت‌تر)
+if (!API_KEY) {
+  console.error("خطا: کلید API پیدا نشد. لطفاً مطمئن شوید که VITE_GEMINI_API_KEY در تنظیمات Netlify ست شده است.");
+}
+
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
  * Converts a File object to a Base64 string.
@@ -71,7 +58,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           imagePart,
