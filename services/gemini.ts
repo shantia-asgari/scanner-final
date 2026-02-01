@@ -4,16 +4,14 @@ import { ReceiptData } from "../types";
 // ==================================================================================
 // تنظیمات کلید دسترسی
 // ==================================================================================
+// دریافت کلید از متغیر محیطی (با روش استاندارد Vite)
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 if (!API_KEY) {
   console.error("خطا: کلید API یافت نشد. لطفاً تنظیمات Netlify را چک کنید.");
 }
 
-// تغییر: اضافه کردن تنظیمات برای رفع خطای مرورگر
-const ai = new GoogleGenAI({ 
-  apiKey: API_KEY
-});
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
   return new Promise((resolve, reject) => {
@@ -53,8 +51,8 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     `;
 
     const response = await ai.models.generateContent({
-      // تغییر مهم: استفاده از نام دقیق نسخه مدل
-      model: 'gemini-1.5-flash-001', 
+      // برگشت به نام استاندارد (حالا که کلید درست است، این کار می‌کند)
+      model: 'gemini-1.5-flash', 
       contents: {
         parts: [
           imagePart,
