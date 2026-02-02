@@ -4,24 +4,16 @@ import { ReceiptData } from "../types";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log("🚀 شروع پردازش...");
+  console.log("🚀 شروع پردازش با مدل جدید...");
 
-  // 1. بررسی وجود کلید API
-  if (!API_KEY) {
-    console.error("❌ کلید API یافت نشد! مشکل از تنظیمات گیت‌هاب است.");
-    throw new Error("API Key is missing in the app.");
-  } else {
-    console.log("✅ کلید API شناسایی شد (شروع با):", API_KEY.substring(0, 5) + "...");
-  }
-
-  // 2. تبدیل عکس به فرمت گوگل
+  // 1. تبدیل عکس به فرمت گوگل
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve((reader.result as string).split(',')[1]);
     reader.readAsDataURL(file);
   });
 
-  // 3. بدنه درخواست (دقیقاً کپی شده از AI Studio)
+  // 2. بدنه درخواست
   const requestBody = {
     contents: [{
       parts: [
@@ -32,18 +24,24 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   };
 
   try {
-    console.log("🌐 در حال ارسال درخواست به گوگل...");
+    // ============================================================
+    // تغییر مهم: استفاده از مدل جدید gemini-2.0-flash
+    // اگر باز هم خطا داد، از 'gemini-1.5-flash-latest' استفاده کنید
+    // ============================================================
+    const MODEL_NAME = "gemini-2.0-flash-exp"; 
+    // نکته: اگر این نام هم کار نکرد، نام دقیق را از AI Studio (بخش Get Code) چک کنید.
+    // گزینه‌های جایگزین احتمالی: "gemini-2.0-flash" یا "gemini-1.5-pro-latest"
+
+    console.log(`🌐 در حال ارسال به مدل: ${MODEL_NAME}`);
     
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody)
       }
     );
-
-    console.log("Status Code:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -55,7 +53,8 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     console.log("✅ پاسخ گوگل دریافت شد:", data);
     
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    const cleanJson = text.replace(/```json|```/g, '').trim();
+    const cleanJson = text.replace(/```json|```/g, '').replace(/json/g, '').trim();
+    
     return JSON.parse(cleanJson) as ReceiptData;
 
   } catch (error) {
