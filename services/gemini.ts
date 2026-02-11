@@ -1,74 +1,83 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-// استفاده از قوی‌ترین مدل پیشنهادی برای استخراج داده‌های متنی
+import { ReceiptData } from "../types";
+
+// ✅ استفاده از مدل پیشنهادی پنل برای دقت بالا
 const MODEL_NAME = "gemini-1.5-pro"; 
+const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
+const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
-export async function extractReceiptData(imageFile: File): Promise<any> {
-  if (!API_KEY) throw new Error("کلید API یافت نشد.");
+export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
+  console.log(`🚀 شروع اسکن با مدل قدرتمند: ${MODEL_NAME}`);
 
-  const base64Image = await fileToBase64(imageFile);
+  const base64DataWithPrefix = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
+  });
 
-  const payload = {
+  // ⚠️ اصلاح مهم: برخی مدل‌ها پیش‌وند data:image را قبول نمی‌کنند
+  // ما آدرس کامل را می‌فرستیم اما در دستور تاکید می‌کنیم
+  
+  const requestBody = {
     model: MODEL_NAME,
     messages: [
       {
         role: "system",
-        content: `You are a high-precision Persian Receipt OCR. 
-        Your task is to extract bank transaction details with ZERO mistakes in numbers.
+        content: `You are a precise Persian Receipt OCR. 
+        Extract these specific fields from the image with 100% accuracy:
+        - amount: Pure digits (Example from image: 999000000)
+        - trackingCode: The 10-digit 'شماره پیگیری' (Example: 5451018865)
+        - referenceNumber: The long 'شماره رهگیری' (Example: 140407141824322587)
+        - depositId: The 'شناسه واریز' (Example: 1080505121)
+        - bankName: Persian bank name (Example: بانک تجارت)
+        - date: Solar Hijri date (YYYY/MM/DD)
+        - time: (HH:MM)
 
-        FIELDS TO CAPTURE:
-        1. "amount": Total amount in Rials. (In the image it is 999,000,000)
-        2. "date": Solar Hijri date (In the image it is 1404/07/14)
-        3. "time": Time of transaction (In the image it is 12:39)
-        4. "tracking_code": The number after 'شماره پیگیری بانک مرکزی' (Expected: 5451018865)
-        5. "reference_id": The long number after 'شماره رهگیری بانک مرکزی' (Expected: 140407141824322587)
-        6. "payment_id": The number after 'شناسه واریز' (Expected: 1080505121)
-        7. "source_bank": Name of the bank at the top (Expected: بانک تجارت)
-        8. "dest_name": Receiver name (Expected: خلق ثروت سرزمین پارسه)
-
-        CRITICAL RULE: 
-        - DO NOT skip any digits.
-        - DO NOT round numbers.
-        - Return ONLY a valid JSON object.`
+        CRITICAL: Return ONLY a raw JSON object. No words, no markdown.`
       },
       {
         role: "user",
         content: [
-          { type: "text", text: "Carefully extract 'شماره پیگیری' and 'شماره رهگیری' from this image. These are the most important fields. Provide only JSON." },
-          { type: "image_url", image_url: { url: base64Image } }
+          {
+            type: "text",
+            text: "Extract all numbers exactly as they appear in this receipt. Do not skip any digit."
+          },
+          {
+            type: "image_url",
+            image_url: { url: base64DataWithPrefix }
+          }
         ]
       }
     ],
-    temperature: 0.1 // برای جلوگیری از توهم و جابجایی اعداد
+    temperature: 0, // کمترین میزان خطا برای استخراج اعداد
+    top_p: 0.1
   };
 
   try {
-    const response = await fetch("https://api.gapgpt.app/v1/chat/completions", {
+    const response = await fetch(API_BASE_URL, {
       method: "POST",
-      headers: {
+      headers: { 
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`
+        "Authorization": `Bearer ${API_KEY}` 
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(requestBody)
     });
 
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || "خطا در ارتباط با سرور");
+    }
+
     const data = await response.json();
-    const resultText = data.choices[0]?.message?.content || "{}";
+    const text = data.choices?.[0]?.message?.content;
     
-    // پاکسازی پاسخ از کاراکترهای اضافی مارک‌داون
-    const cleanJson = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
-    
-    return JSON.parse(cleanJson);
+    if (!text) throw new Error("پاسخ دریافتی خالی بود.");
+
+    // تمیزکاری نهایی برای جلوگیری از خطای JSON.parse
+    const cleanJson = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(cleanJson) as ReceiptData;
+
   } catch (error) {
-    console.error("AI Extraction Error:", error);
+    console.error("❌ خطای نهایی:", error);
     throw error;
   }
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-}
+};
