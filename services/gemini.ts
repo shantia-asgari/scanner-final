@@ -1,55 +1,47 @@
 import { ReceiptData } from "../types";
 
-// ✅ استفاده از مدل پیشنهادی پنل برای دقت بالا
-const MODEL_NAME = "gemini-1.5-pro"; 
+// ✅ تنظیمات سرویس GapGPT
+// مدل پیشنهادی: gpt-4o (چون قوی‌ترین مدل برای خواندن عکس است)
+// اگر اشتراک جمینای دارید می‌توانید بنویسید: gemini-1.5-pro
+const MODEL_NAME = "gpt-4o"; 
+
+// آدرس پایه سرویس گپ جی‌پی‌تی
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
+
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 شروع اسکن با مدل قدرتمند: ${MODEL_NAME}`);
+  console.log(`🚀 شروع اسکن با سرویس GapGPT (مدل: ${MODEL_NAME})...`);
 
-  const base64DataWithPrefix = await new Promise<string>((resolve) => {
+  // تبدیل عکس به Base64
+  const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.readAsDataURL(file);
   });
 
-  // ⚠️ اصلاح مهم: برخی مدل‌ها پیش‌وند data:image را قبول نمی‌کنند
-  // ما آدرس کامل را می‌فرستیم اما در دستور تاکید می‌کنیم
-  
+  // آماده‌سازی درخواست به فرمت OpenAI (که GapGPT از آن پشتیبانی می‌کند)
   const requestBody = {
     model: MODEL_NAME,
     messages: [
-      {
-        role: "system",
-        content: `You are a precise Persian Receipt OCR. 
-        Extract these specific fields from the image with 100% accuracy:
-        - amount: Pure digits (Example from image: 999000000)
-        - trackingCode: The 10-digit 'شماره پیگیری' (Example: 5451018865)
-        - referenceNumber: The long 'شماره رهگیری' (Example: 140407141824322587)
-        - depositId: The 'شناسه واریز' (Example: 1080505121)
-        - bankName: Persian bank name (Example: بانک تجارت)
-        - date: Solar Hijri date (YYYY/MM/DD)
-        - time: (HH:MM)
-
-        CRITICAL: Return ONLY a raw JSON object. No words, no markdown.`
-      },
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: "Extract all numbers exactly as they appear in this receipt. Do not skip any digit."
+            text: "Extract data from this bank receipt (Persian/Iranian) into a JSON object with these fields: amount (digits only, no commas), depositId, trackingCode, referenceNumber, bankName, date (YYYY/MM/DD), time (HH:MM). Return ONLY the raw JSON string. No markdown formatting like ```json."
           },
           {
             type: "image_url",
-            image_url: { url: base64DataWithPrefix }
+            image_url: {
+              url: base64Data // ارسال عکس به صورت Base64
+            }
           }
         ]
       }
     ],
-    temperature: 0, // کمترین میزان خطا برای استخراج اعداد
-    top_p: 0.1
+    max_tokens: 1000,
+    temperature: 0.1 // دمای پایین برای دقت بیشتر
   };
 
   try {
@@ -57,23 +49,28 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}` 
+        "Authorization": `Bearer ${API_KEY}` // احراز هویت با کلید شما
       },
       body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || "خطا در ارتباط با سرور");
+      const errorText = await response.text();
+      console.error(`❌ خطا از سمت GapGPT (${response.status}):`, errorText);
+      throw new Error(`GapGPT Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log("✅ پاسخ دریافت شد!");
+
+    // استخراج متن از فرمت OpenAI
     const text = data.choices?.[0]?.message?.content;
     
-    if (!text) throw new Error("پاسخ دریافتی خالی بود.");
+    if (!text) throw new Error("پاسخ خالی از سرویس دریافت شد.");
 
-    // تمیزکاری نهایی برای جلوگیری از خطای JSON.parse
-    const cleanJson = text.replace(/```json|```/g, '').trim();
+    // تمیزکاری جیسون
+    const cleanJson = text.replace(/```json|```/g, '').replace(/json/g, '').trim();
+    
     return JSON.parse(cleanJson) as ReceiptData;
 
   } catch (error) {
