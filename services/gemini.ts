@@ -1,26 +1,19 @@
 import { ReceiptData } from "../types";
 
-// ✅ تنظیمات سرویس GapGPT
-// مدل پیشنهادی: gpt-4o (چون قوی‌ترین مدل برای خواندن عکس است)
-// اگر اشتراک جمینای دارید می‌توانید بنویسید: gemini-1.5-pro
+// ✅ دقیقاً همان بدنه اصلی کد شما بدون تغییر در ساختار
 const MODEL_NAME = "gpt-4o"; 
-
-// آدرس پایه سرویس گپ جی‌پی‌تی
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
-
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 شروع اسکن با سرویس GapGPT (مدل: ${MODEL_NAME})...`);
+  console.log(`🚀 شروع اسکن با تمرکز بر دقت ۱۰۰٪ ارقام (مدل: ${MODEL_NAME})...`);
 
-  // تبدیل عکس به Base64
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.readAsDataURL(file);
   });
 
-  // آماده‌سازی درخواست به فرمت OpenAI (که GapGPT از آن پشتیبانی می‌کند)
   const requestBody = {
     model: MODEL_NAME,
     messages: [
@@ -29,19 +22,35 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: "Extract data from this bank receipt (Persian/Iranian) into a JSON object with these fields: amount (digits only, no commas), depositId, trackingCode, referenceNumber, bankName, date (YYYY/MM/DD), time (HH:MM). Return ONLY the raw JSON string. No markdown formatting like ```json."
+            text: `Extract data from this receipt into a JSON object. 
+            CRITICAL INSTRUCTION: You must be a 'Digit-by-Digit' OCR. 
+            - For 'trackingCode' and 'referenceNumber', count the digits carefully. 
+            - DO NOT skip any digits. 
+            - DO NOT hallucinate or shorten long numbers. 
+            - Read every single character one by one.
+
+            Fields:
+            - amount: (digits only)
+            - depositId: (exact digits)
+            - trackingCode: (exact digits)
+            - referenceNumber: (exact digits)
+            - bankName: (Persian)
+            - date: (YYYY/MM/DD)
+            - time: (HH:MM)
+
+            Return ONLY the raw JSON string.`
           },
           {
             type: "image_url",
             image_url: {
-              url: base64Data // ارسال عکس به صورت Base64
+              url: base64Data
             }
           }
         ]
       }
     ],
     max_tokens: 1000,
-    temperature: 0.1 // دمای پایین برای دقت بیشتر
+    temperature: 0 // صفر کردن دما برای جلوگیری از هرگونه حدس یا خطا در ارقام
   };
 
   try {
@@ -49,27 +58,22 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}` // احراز هویت با کلید شما
+        "Authorization": `Bearer ${API_KEY}` 
       },
       body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ خطا از سمت GapGPT (${response.status}):`, errorText);
       throw new Error(`GapGPT Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log("✅ پاسخ دریافت شد!");
-
-    // استخراج متن از فرمت OpenAI
     const text = data.choices?.[0]?.message?.content;
     
-    if (!text) throw new Error("پاسخ خالی از سرویس دریافت شد.");
+    if (!text) throw new Error("پاسخ خالی دریافت شد.");
 
-    // تمیزکاری جیسون
-    const cleanJson = text.replace(/```json|```/g, '').replace(/json/g, '').trim();
+    const cleanJson = text.replace(/```json|```/gi, '').replace(/json/gi, '').trim();
     
     return JSON.parse(cleanJson) as ReceiptData;
 
