@@ -1,5 +1,5 @@
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-// تغییر به قوی‌ترین مدل پیشنهادی پنل برای دقت بیشتر
+// استفاده از قوی‌ترین مدل پیشنهادی برای استخراج داده‌های متنی
 const MODEL_NAME = "gemini-1.5-pro"; 
 
 export async function extractReceiptData(imageFile: File): Promise<any> {
@@ -12,32 +12,33 @@ export async function extractReceiptData(imageFile: File): Promise<any> {
     messages: [
       {
         role: "system",
-        content: `You are a precision data extraction tool for Persian banking receipts.
-        
-        CRITICAL INSTRUCTIONS:
-        1. **Tracking vs Reference:** This receipt has BOTH "شماره پیگیری" (shomare peygiri) and "شماره رهگیری" (shomare rahgiri). You MUST extract both accurately.
-        2. **No Rounding:** Write every single digit of the numbers. Do not omit zeros.
-        3. **Language:** Extract bank name and receiver name in Persian.
-        
-        JSON Fields to fill:
-        - amount: (The total amount in Rials/Tomans as a string)
-        - date: (Solar Hijri date e.g. 1404/07/14)
-        - time: (e.g. 12:39)
-        - source_bank: (e.g. بانک تجارت)
-        - dest_name: (Receiver name)
-        - tracking_code: (Extract 'شماره پیگیری بانک مرکزی')
-        - reference_id: (Extract 'شماره رهگیری بانک مرکزی')
-        - payment_id: (Extract 'شناسه واریز' if exists)`
+        content: `You are a high-precision Persian Receipt OCR. 
+        Your task is to extract bank transaction details with ZERO mistakes in numbers.
+
+        FIELDS TO CAPTURE:
+        1. "amount": Total amount in Rials. (In the image it is 999,000,000)
+        2. "date": Solar Hijri date (In the image it is 1404/07/14)
+        3. "time": Time of transaction (In the image it is 12:39)
+        4. "tracking_code": The number after 'شماره پیگیری بانک مرکزی' (Expected: 5451018865)
+        5. "reference_id": The long number after 'شماره رهگیری بانک مرکزی' (Expected: 140407141824322587)
+        6. "payment_id": The number after 'شناسه واریز' (Expected: 1080505121)
+        7. "source_bank": Name of the bank at the top (Expected: بانک تجارت)
+        8. "dest_name": Receiver name (Expected: خلق ثروت سرزمین پارسه)
+
+        CRITICAL RULE: 
+        - DO NOT skip any digits.
+        - DO NOT round numbers.
+        - Return ONLY a valid JSON object.`
       },
       {
         role: "user",
         content: [
-          { type: "text", text: "Carefully analyze this receipt and return ONLY the JSON." },
+          { type: "text", text: "Carefully extract 'شماره پیگیری' and 'شماره رهگیری' from this image. These are the most important fields. Provide only JSON." },
           { type: "image_url", image_url: { url: base64Image } }
         ]
       }
     ],
-    temperature: 0.1 // تعادل بین دقت و درک بصری
+    temperature: 0.1 // برای جلوگیری از توهم و جابجایی اعداد
   };
 
   try {
@@ -52,11 +53,13 @@ export async function extractReceiptData(imageFile: File): Promise<any> {
 
     const data = await response.json();
     const resultText = data.choices[0]?.message?.content || "{}";
+    
+    // پاکسازی پاسخ از کاراکترهای اضافی مارک‌داون
     const cleanJson = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
     
     return JSON.parse(cleanJson);
   } catch (error) {
-    console.error("AI Error:", error);
+    console.error("AI Extraction Error:", error);
     throw error;
   }
 }
