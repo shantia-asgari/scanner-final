@@ -1,12 +1,8 @@
-// سرویس ارتباط با GapGPT با نام تابع هماهنگ با پروژه شما
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const MODEL_NAME = "gpt-4o"; 
 
-// نام تابع دقیقاً به extractReceiptData تغییر یافت تا با App.tsx هماهنگ شود
 export async function extractReceiptData(imageFile: File): Promise<any> {
-  if (!API_KEY) {
-    throw new Error("کلید API یافت نشد.");
-  }
+  if (!API_KEY) throw new Error("کلید API یافت نشد.");
 
   const base64Image = await fileToBase64(imageFile);
 
@@ -15,25 +11,38 @@ export async function extractReceiptData(imageFile: File): Promise<any> {
     messages: [
       {
         role: "system",
-        content: `You are a Data Entry Expert. Extract data with 100% ACCURACY.
-        RULES:
-        1. **NUMBERS:** Extract every single digit exactly. Do not round.
-        2. **ZEROS:** Do NOT drop leading or trailing zeros.
-        3. **DATE:** Use Solar Hijri (1404/xx/xx).
-        4. **OUTPUT:** Return ONLY raw JSON.
+        content: `You are an expert Iranian Receipt Analyzer. Extract ALL available data.
         
-        Fields: amount, date, time, source_bank, source_card, dest_name, dest_card, tracking_code, reference_id.`
+        STRICT RULES FOR NUMBERS:
+        - Extract Tracking/Reference numbers EXACTLY as printed. 
+        - Do NOT miss any digits. 
+        - If there are multiple numbers (like 'پیگیری' and 'رهگیری'), extract BOTH into their respective fields.
+        
+        JSON STRUCTURE:
+        {
+          "amount": "Pure number string",
+          "date": "Solar Hijri date",
+          "time": "Time string",
+          "source_bank": "Bank name",
+          "source_card": "Source card/account",
+          "dest_name": "Receiver name",
+          "dest_card": "Destination card/IBAN",
+          "tracking_code": "Extract 'شماره پیگیری' or 'کد پیگیری'",
+          "reference_id": "Extract 'شماره رهگیری' or 'شماره ارجاع'",
+          "payment_id": "Extract 'شناسه واریز' or 'شناسه پرداخت' if exists"
+        }`
       },
       {
         role: "user",
         content: [
-          { type: "text", text: "Extract data strictly." },
+          { type: "text", text: "Carefully read this receipt. Find 'شماره پیگیری', 'شماره رهگیری', and 'شناسه واریز'. Output ONLY JSON." },
           { type: "image_url", image_url: { url: base64Image } }
         ]
       }
     ],
-    temperature: 0, // دقت حداکثری بدون خلاقیت
-    top_p: 0.1
+    // بالا بردن کمی خلاقیت برای درک بهتر دست‌خط‌ها یا فونت‌های مختلف
+    temperature: 0.2, 
+    top_p: 0.9
   };
 
   try {
@@ -52,7 +61,7 @@ export async function extractReceiptData(imageFile: File): Promise<any> {
     
     return JSON.parse(cleanJson);
   } catch (error) {
-    console.error("Error:", error);
+    console.error("AI Error:", error);
     throw error;
   }
 }
