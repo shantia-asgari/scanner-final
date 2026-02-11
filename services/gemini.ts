@@ -1,5 +1,6 @@
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = "gpt-4o"; 
+// تغییر به قوی‌ترین مدل پیشنهادی پنل برای دقت بیشتر
+const MODEL_NAME = "gemini-1.5-pro"; 
 
 export async function extractReceiptData(imageFile: File): Promise<any> {
   if (!API_KEY) throw new Error("کلید API یافت نشد.");
@@ -11,38 +12,32 @@ export async function extractReceiptData(imageFile: File): Promise<any> {
     messages: [
       {
         role: "system",
-        content: `You are an expert Iranian Receipt Analyzer. Extract ALL available data.
+        content: `You are a precision data extraction tool for Persian banking receipts.
         
-        STRICT RULES FOR NUMBERS:
-        - Extract Tracking/Reference numbers EXACTLY as printed. 
-        - Do NOT miss any digits. 
-        - If there are multiple numbers (like 'پیگیری' and 'رهگیری'), extract BOTH into their respective fields.
+        CRITICAL INSTRUCTIONS:
+        1. **Tracking vs Reference:** This receipt has BOTH "شماره پیگیری" (shomare peygiri) and "شماره رهگیری" (shomare rahgiri). You MUST extract both accurately.
+        2. **No Rounding:** Write every single digit of the numbers. Do not omit zeros.
+        3. **Language:** Extract bank name and receiver name in Persian.
         
-        JSON STRUCTURE:
-        {
-          "amount": "Pure number string",
-          "date": "Solar Hijri date",
-          "time": "Time string",
-          "source_bank": "Bank name",
-          "source_card": "Source card/account",
-          "dest_name": "Receiver name",
-          "dest_card": "Destination card/IBAN",
-          "tracking_code": "Extract 'شماره پیگیری' or 'کد پیگیری'",
-          "reference_id": "Extract 'شماره رهگیری' or 'شماره ارجاع'",
-          "payment_id": "Extract 'شناسه واریز' or 'شناسه پرداخت' if exists"
-        }`
+        JSON Fields to fill:
+        - amount: (The total amount in Rials/Tomans as a string)
+        - date: (Solar Hijri date e.g. 1404/07/14)
+        - time: (e.g. 12:39)
+        - source_bank: (e.g. بانک تجارت)
+        - dest_name: (Receiver name)
+        - tracking_code: (Extract 'شماره پیگیری بانک مرکزی')
+        - reference_id: (Extract 'شماره رهگیری بانک مرکزی')
+        - payment_id: (Extract 'شناسه واریز' if exists)`
       },
       {
         role: "user",
         content: [
-          { type: "text", text: "Carefully read this receipt. Find 'شماره پیگیری', 'شماره رهگیری', and 'شناسه واریز'. Output ONLY JSON." },
+          { type: "text", text: "Carefully analyze this receipt and return ONLY the JSON." },
           { type: "image_url", image_url: { url: base64Image } }
         ]
       }
     ],
-    // بالا بردن کمی خلاقیت برای درک بهتر دست‌خط‌ها یا فونت‌های مختلف
-    temperature: 0.2, 
-    top_p: 0.9
+    temperature: 0.1 // تعادل بین دقت و درک بصری
   };
 
   try {
