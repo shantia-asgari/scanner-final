@@ -1,12 +1,12 @@
 import { ReceiptData } from "../types";
 
-// ✅ دقیقاً همان بدنه اصلی و مدل gpt-4o که تایید کردید
+// ✅ نسخه نهایی با منطق تشخیص دوگانه اعداد
 const MODEL_NAME = "gpt-4o"; 
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 شروع اسکن متمرکز (مدل: ${MODEL_NAME})...`);
+  console.log(`🚀 شروع اسکن هوشمند اعداد (مدل: ${MODEL_NAME})...`);
 
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -24,17 +24,21 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
             type: "text",
             text: `Analyze this Iranian bank receipt. Extract data into a JSON object.
             
-            STRICT RULES:
-            1. amount: Extract digits only.
-            2. trackingCode: Extract 'شماره پیگیری' with 100% digit accuracy.
-            3. referenceNumber: Extract 'شماره رهگیری' with 100% digit accuracy.
-            4. date & time: Extract exactly as printed.
-            5. depositId: DO NOT extract the number. If 'شناسه واریز' or 'شناسه پرداخت' exists, return "ثبت", otherwise return "عدم ثبت".
-            6. bankName: Always return "-" (just a dash).
+            STRICT RULES FOR NUMBERS:
+            1. Look for ALL identification numbers (شماره پیگیری، شماره رهگیری، شماره مرجع، کد ارجاع).
+            2. If you find TWO different numbers:
+               - Put the LONGER one in "referenceNumber".
+               - Put the SHORTER one in "trackingCode".
+            3. If you find only ONE number, put it in both fields or prioritize "referenceNumber".
+            4. Extract every single digit with 100% accuracy. Do not skip any character.
             
-            IGNORE all other fields.
+            OTHER FIELDS:
+            - amount: Digits only.
+            - date & time: Exactly as printed.
+            - depositId: If 'شناسه واریز' or 'شناسه پرداخت' exists, return "ثبت", otherwise "عدم ثبت".
+            - bankName: Always return "-".
             
-            Output ONLY this JSON format:
+            Output ONLY raw JSON:
             {
               "amount": "",
               "trackingCode": "",
@@ -53,7 +57,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       }
     ],
     max_tokens: 1000,
-    temperature: 0 // صلب‌ترین حالت برای جلوگیری از خطا در استخراج اعداد
+    temperature: 0 
   };
 
   try {
@@ -65,11 +69,6 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       },
       body: JSON.stringify(requestBody)
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`GapGPT Error: ${response.status}`);
-    }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
