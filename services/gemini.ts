@@ -1,12 +1,12 @@
 import { ReceiptData } from "../types";
 
-// ✅ دقیقاً همان بدنه اصلی و مدل gpt-4o که تایید کردید
-const MODEL_NAME = "gpt-4o"; 
+// ✅ سوییچ به جدیدترین و دقیق‌ترین مدل موجود در پنل شما
+const MODEL_NAME = "gemini-2.5-flash"; 
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 شروع اسکن متمرکز (مدل: ${MODEL_NAME})...`);
+  console.log(`🚀 شروع اسکن با مدل نسل جدید: ${MODEL_NAME}`);
 
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -22,28 +22,21 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Analyze this Iranian bank receipt. Extract data into a JSON object.
+            text: `Extract data from this Iranian bank receipt. 
             
-            STRICT RULES:
-            1. amount: Extract digits only.
-            2. trackingCode: Extract 'شماره پیگیری' with 100% digit accuracy.
-            3. referenceNumber: Extract 'شماره رهگیری' with 100% digit accuracy.
-            4. date & time: Extract exactly as printed.
-            5. depositId: DO NOT extract the number. If 'شناسه واریز' or 'شناسه پرداخت' exists, return "ثبت", otherwise return "عدم ثبت".
-            6. bankName: Always return "-" (just a dash).
+            STRICT NUMERIC RULES:
+            1. You MUST find TWO different identification numbers if they exist.
+            2. referenceNumber: The LONGER string of digits (e.g., 14-20 digits). 
+            3. trackingCode: The SHORTER string of digits (e.g., 6-10 digits). 
+            4. If only one is found, put it in referenceNumber.
+            5. amount: Digits only.
             
-            IGNORE all other fields.
-            
-            Output ONLY this JSON format:
-            {
-              "amount": "",
-              "trackingCode": "",
-              "referenceNumber": "",
-              "date": "",
-              "time": "",
-              "depositId": "",
-              "bankName": "-"
-            }`
+            LOGIC RULES:
+            - bankName: Always return "-".
+            - depositId: If 'شناسه واریز' or 'شناسه پرداخت' is visible, return "ثبت", else "عدم ثبت".
+            - date & time: Extract carefully (Solar Hijri).
+
+            Return ONLY raw JSON object. NO markdown.`
           },
           {
             type: "image_url",
@@ -53,7 +46,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       }
     ],
     max_tokens: 1000,
-    temperature: 0 // صلب‌ترین حالت برای جلوگیری از خطا در استخراج اعداد
+    temperature: 0 // صلب‌ترین حالت برای جلوگیری از جا انداختن ارقام
   };
 
   try {
@@ -66,10 +59,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       body: JSON.stringify(requestBody)
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`GapGPT Error: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`GapGPT Error: ${response.status}`);
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
