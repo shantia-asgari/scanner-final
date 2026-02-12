@@ -5,8 +5,6 @@ const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 پردازش نهایی با مدل: ${MODEL_NAME}`);
-
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -21,17 +19,9 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Extract data from this Iranian bank receipt. Precision is non-negotiable for financial auditing.
-            
-            RULES:
-            1. amount: Digits only.
-            2. trackingCode: Extract digits of 'شماره پیگیری' with 100% accuracy.
-            3. referenceNumber: Extract digits of 'شماره رهگیری' or 'مرجع' with 100% accuracy.
-            4. depositId: If 'شناسه واریز' or 'شناسه پرداخت' exists return "ثبت", else "عدم ثبت".
-            5. bankName: Always return "-".
-            6. date & time: Extract exactly.
-            
-            If a field is not found, return "". Return ONLY a valid JSON object.`
+            text: `Extract Iranian receipt data to JSON. 
+            Fields: amount, trackingCode, referenceNumber, date, time, depositId (return "ثبت" or "عدم ثبت"), bankName (return "-").
+            Important: Return ONLY the JSON object starting with { and ending with }.`
           },
           {
             type: "image_url",
@@ -40,36 +30,43 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         ]
       }
     ],
-    // افزایش توکن برای جلوگیری از خطای قطع شدن JSON
-    max_tokens: 2000, 
+    max_tokens: 1000,
     temperature: 0
   };
 
   try {
     const response = await fetch(API_BASE_URL, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}` 
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${API_KEY}` },
       body: JSON.stringify(requestBody)
     });
 
-    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-
     const data = await response.json();
     let text = data.choices?.[0]?.message?.content || "";
+
+    // 🛡️ تکنیک فوق امن برای استخراج JSON از هر متنی
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}') + 1;
     
-    // تمیزکاری هوشمندانه برای جلوگیری از خطای SyntaxError
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}') + 1;
-    const cleanJson = text.substring(jsonStart, jsonEnd);
+    if (start === -1 || end === 0) {
+      throw new Error("خروجی معتبری از هوش مصنوعی دریافت نشد.");
+    }
+
+    let cleanJson = text.substring(start, end);
     
-    console.log("✅ خروجی نهایی مدل:", cleanJson);
-    return JSON.parse(cleanJson);
+    // اصلاح دستی اگر رشته ناتمام بود (برای جلوگیری از SyntaxError)
+    if (!cleanJson.endsWith('}')) cleanJson += '"}'; 
+
+    try {
+      return JSON.parse(cleanJson);
+    } catch (e) {
+      // تلاش مجدد برای تمیزکاری کاراکترهای غیرمجاز
+      const fixedJson = cleanJson.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
+      return JSON.parse(fixedJson);
+    }
 
   } catch (error) {
-    console.error("❌ خطای پردازش:", error);
+    console.error("❌ Fatal Error:", error);
     throw error;
   }
 };
