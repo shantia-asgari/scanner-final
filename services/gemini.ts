@@ -1,12 +1,12 @@
 import { ReceiptData } from "../types";
 
-// ✅ همان بدنه اصلی و ساختار مورد تایید شما
+// ✅ دقیقاً همان بدنه اصلی و مدل gpt-4o که تایید کردید
 const MODEL_NAME = "gpt-4o"; 
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 اسکن متمرکز با مدل: ${MODEL_NAME}...`);
+  console.log(`🚀 شروع اسکن متمرکز (مدل: ${MODEL_NAME})...`);
 
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -22,15 +22,17 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Analyze this Iranian bank receipt with high focus on numbers. 
+            text: `Analyze this Iranian bank receipt. Extract data into a JSON object.
             
             STRICT RULES:
-            1. amount: Extract total amount in digits only.
-            2. trackingCode: Extract 'شماره پیگیری' digit-by-digit.
-            3. referenceNumber: Extract 'شماره رهگیری' digit-by-digit. (Do NOT mix these two).
+            1. amount: Extract digits only.
+            2. trackingCode: Extract 'شماره پیگیری' with 100% digit accuracy.
+            3. referenceNumber: Extract 'شماره رهگیری' with 100% digit accuracy.
             4. date & time: Extract exactly as printed.
-            5. depositId: DO NOT extract the number. Instead, return 'true' if any 'شناسه واریز' or 'شناسه پرداخت' exists in the image, otherwise 'false'.
-            6. IGNORE: Do NOT extract bank name or source account numbers.
+            5. depositId: DO NOT extract the number. If 'شناسه واریز' or 'شناسه پرداخت' exists, return "ثبت", otherwise return "عدم ثبت".
+            6. bankName: Always return "-" (just a dash).
+            
+            IGNORE all other fields.
             
             Output ONLY this JSON format:
             {
@@ -39,20 +41,19 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
               "referenceNumber": "",
               "date": "",
               "time": "",
-              "hasDepositId": true/false
+              "depositId": "",
+              "bankName": "-"
             }`
           },
           {
             type: "image_url",
-            image_url: {
-              url: base64Data
-            }
+            image_url: { url: base64Data }
           }
         ]
       }
     ],
     max_tokens: 1000,
-    temperature: 0 // صلب‌ترین حالت برای جلوگیری از جابجایی فیلدها
+    temperature: 0 // صلب‌ترین حالت برای جلوگیری از خطا در استخراج اعداد
   };
 
   try {
@@ -79,7 +80,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     return JSON.parse(cleanJson);
 
   } catch (error) {
-    console.error("❌ خطای نهایی:", error);
+    console.error("❌ خطا:", error);
     throw error;
   }
 };
