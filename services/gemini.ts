@@ -1,12 +1,12 @@
 import { ReceiptData } from "../types";
 
-// ✅ نسخه نهایی با منطق تشخیص دوگانه اعداد
+// ✅ بازگشت به کد پایدار شما با تقویت دستورات استخراج
 const MODEL_NAME = "gpt-4o"; 
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 شروع اسکن هوشمند اعداد (مدل: ${MODEL_NAME})...`);
+  console.log(`🚀 شروع اسکن فوق‌دقیق (مدل: ${MODEL_NAME})...`);
 
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -22,32 +22,23 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Analyze this Iranian bank receipt. Extract data into a JSON object.
+            text: `Act as a high-precision OCR for Iranian bank receipts. 
             
-            STRICT RULES FOR NUMBERS:
-            1. Look for ALL identification numbers (شماره پیگیری، شماره رهگیری، شماره مرجع، کد ارجاع).
-            2. If you find TWO different numbers:
-               - Put the LONGER one in "referenceNumber".
-               - Put the SHORTER one in "trackingCode".
-            3. If you find only ONE number, put it in both fields or prioritize "referenceNumber".
-            4. Extract every single digit with 100% accuracy. Do not skip any character.
+            GOAL: Extract numbers with 100% accuracy.
             
-            OTHER FIELDS:
-            - amount: Digits only.
-            - date & time: Exactly as printed.
-            - depositId: If 'شناسه واریز' or 'شناسه پرداخت' exists, return "ثبت", otherwise "عدم ثبت".
-            - bankName: Always return "-".
+            INSTRUCTIONS:
+            1. Find all identification numbers (شماره پیگیری, شماره رهگیری, مرجع, ارجاع).
+            2. For the LONGEST number (usually 14+ digits), put it in "referenceNumber".
+            3. For the SHORTER number (usually 6-10 digits), put it in "trackingCode".
+            4. If only one number exists, put it in "referenceNumber".
+            5. amount: Digits only, no commas.
+            6. depositId: If 'شناسه واریز' or 'شناسه پرداخت' is visible, return "ثبت", otherwise "عدم ثبت".
+            7. bankName: Always return "-".
             
-            Output ONLY raw JSON:
-            {
-              "amount": "",
-              "trackingCode": "",
-              "referenceNumber": "",
-              "date": "",
-              "time": "",
-              "depositId": "",
-              "bankName": "-"
-            }`
+            STRICT RULE: Read digits one-by-one. DO NOT skip any digit. 
+            Check this example from your target image: If you see '140411160172713240', do NOT return '1404111601727...'. Return EVERY digit.
+            
+            Return ONLY raw JSON object.`
           },
           {
             type: "image_url",
@@ -57,7 +48,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       }
     ],
     max_tokens: 1000,
-    temperature: 0 
+    temperature: 0 // صفر مطلق برای جلوگیری از هرگونه تغییر در اعداد
   };
 
   try {
@@ -69,6 +60,8 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       },
       body: JSON.stringify(requestBody)
     });
+
+    if (!response.ok) throw new Error(`GapGPT Error: ${response.status}`);
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
