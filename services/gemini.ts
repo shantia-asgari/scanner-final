@@ -1,12 +1,12 @@
 import { ReceiptData } from "../types";
 
-// ✅ استفاده از مدل نسل جدید طبق لیست پنل شما
+// ✅ استفاده از مدل نسل جدید برای تشخیص دقیق روابط متنی و تصویری
 const MODEL_NAME = "gemini-2.5-flash"; 
 const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
-  console.log(`🚀 شروع اسکن فوق دقیق با مدل: ${MODEL_NAME}`);
+  console.log(`🚀 شروع اسکن هوشمند و تفکیک شده (مدل: ${MODEL_NAME})...`);
 
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -22,23 +22,22 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Act as a high-precision OCR expert. Your life depends on the accuracy of EVERY SINGLE DIGIT.
+            text: `You are a professional OCR for ANY Iranian bank receipt. 
+            Extract data based on VISUAL PROXIMITY to labels, NOT digit length.
 
-            ANALYSIS STEPS:
-            1. Scan the image for ALL numerical strings.
-            2. Identify 'شماره پیگیری' (Tracking) and 'شماره رهگیری' (Reference).
-            3. FOR THE SHORTER NUMBER (trackingCode): Read it digit-by-digit slowly. (Example: 5 4 5 1 0 1 8 8 6 5).
-            4. FOR THE LONGER NUMBER (referenceNumber): Read it digit-by-digit slowly.
+            STRICT EXTRACTION RULES:
+            1. amount: Find the number strictly associated with labels like 'مبلغ' or 'مبلغ تراکنش'.
+            2. trackingCode: Find the number strictly associated with labels like 'شماره پیگیری' or 'کد پیگیری'.
+            3. referenceNumber: Find the number strictly associated with labels like 'شماره رهگیری', 'شماره ارجاع', or 'کد مرجع'.
+            4. depositId: DO NOT extract the number. If 'شناسه واریز' or 'شناسه پرداخت' is present, return "ثبت", else return "عدم ثبت".
+            5. bankName: Always return "-".
+            6. date & time: Extract from their respective labels.
 
-            STRICT DATA MAPPING:
-            - trackingCode: The 6-11 digit identification number. MUST BE FULLY EXTRACTED.
-            - referenceNumber: The 14-20 digit identification number. MUST BE FULLY EXTRACTED.
-            - amount: Digits only.
-            - depositId: If 'شناسه واریز/پرداخت' exists, return "ثبت", else "عدم ثبت".
-            - bankName: Always return "-".
-            - date & time: Exact strings.
-
-            Return ONLY raw JSON object. NO markdown tags.`
+            IMPORTANT: 
+            - If a label (e.g., trackingCode) is missing in the receipt, return an empty string "" for it.
+            - Never put the 'amount' digits into 'trackingCode' or 'referenceNumber' fields.
+            
+            Return ONLY raw JSON.`
           },
           {
             type: "image_url",
@@ -47,8 +46,8 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         ]
       }
     ],
-    max_tokens: 1500,
-    temperature: 0 // صلب‌ترین حالت برای جلوگیری از جا انداختن اعداد
+    max_tokens: 1000,
+    temperature: 0
   };
 
   try {
@@ -70,7 +69,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     return JSON.parse(cleanJson);
 
   } catch (error) {
-    console.error("❌ خطا در استخراج:", error);
+    console.error("❌ خطای نهایی:", error);
     throw error;
   }
 };
