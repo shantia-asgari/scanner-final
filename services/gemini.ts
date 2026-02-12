@@ -19,9 +19,15 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Extract Iranian receipt data to JSON. 
-            Fields: amount, trackingCode, referenceNumber, date, time, depositId (return "ثبت" or "عدم ثبت"), bankName (return "-").
-            Important: Return ONLY the JSON object starting with { and ending with }.`
+            text: `Analyze this Iranian receipt. Extract these fields using this exact format:
+            AMOUNT: (digits)
+            TRACKING: (digits)
+            REFERENCE: (digits)
+            DATE: (YYYY/MM/DD)
+            TIME: (HH:MM)
+            DEPOSIT_ID: (If exists return 'ثبت' otherwise 'عدم ثبت')
+            
+            RULES: 100% precision for digits. bankName is always '-'.`
           },
           {
             type: "image_url",
@@ -30,7 +36,6 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         ]
       }
     ],
-    max_tokens: 1000,
     temperature: 0
   };
 
@@ -42,31 +47,27 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     });
 
     const data = await response.json();
-    let text = data.choices?.[0]?.message?.content || "";
-
-    // 🛡️ تکنیک فوق امن برای استخراج JSON از هر متنی
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}') + 1;
+    const content = data.choices?.[0]?.message?.content || "";
     
-    if (start === -1 || end === 0) {
-      throw new Error("خروجی معتبری از هوش مصنوعی دریافت نشد.");
-    }
+    // 🛠️ استخراج دستی اطلاعات بدون نیاز به JSON.parse (روش ضد خطا)
+    const getValue = (label: string) => {
+      const regex = new RegExp(`${label}:\\s*(.*)`, "i");
+      const match = content.match(regex);
+      return match ? match[1].trim() : "";
+    };
 
-    let cleanJson = text.substring(start, end);
-    
-    // اصلاح دستی اگر رشته ناتمام بود (برای جلوگیری از SyntaxError)
-    if (!cleanJson.endsWith('}')) cleanJson += '"}'; 
-
-    try {
-      return JSON.parse(cleanJson);
-    } catch (e) {
-      // تلاش مجدد برای تمیزکاری کاراکترهای غیرمجاز
-      const fixedJson = cleanJson.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
-      return JSON.parse(fixedJson);
-    }
+    return {
+      amount: getValue("AMOUNT"),
+      trackingCode: getValue("TRACKING"),
+      referenceNumber: getValue("REFERENCE"),
+      date: getValue("DATE"),
+      time: getValue("TIME"),
+      depositId: getValue("DEPOSIT_ID"),
+      bankName: "-"
+    };
 
   } catch (error) {
-    console.error("❌ Fatal Error:", error);
-    throw error;
+    console.error("❌ Error:", error);
+    throw new Error("خطا در پردازش اطلاعات. لطفا دوباره تلاش کنید.");
   }
 };
