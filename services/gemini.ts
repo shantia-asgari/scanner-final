@@ -1,8 +1,8 @@
 import { ReceiptData } from "../types";
 
 const MODEL_NAME = "gemini-2.5-flash"; 
-const API_BASE_URL = "https://api.gapgpt.app/v1/chat/completions";
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
+const TARGET_URL = "https://api.gapgpt.app/v1/chat/completions";
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   const base64Data = await new Promise<string>((resolve) => {
@@ -19,13 +19,8 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
         content: [
           {
             type: "text",
-            text: `Analyze this Iranian receipt. Extract exactly:
-            AMOUNT: (digits)
-            TRACKING: (digits)
-            REFERENCE: (digits)
-            DATE: (YYYY/MM/DD)
-            TIME: (HH:MM)
-            DEPOSIT_ID: (If exists 'ثبت' else 'عدم ثبت')`
+            text: `Extract Iranian receipt data: AMOUNT, TRACKING, REFERENCE, DATE, TIME. 
+            For DEPOSIT_ID: if exists return 'ثبت' else 'عدم ثبت'. BankName is always '-'.`
           },
           {
             type: "image_url",
@@ -38,27 +33,30 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   };
 
   try {
-    // 🛡️ استفاده از یک پروکسی جایگزین با متد متفاوت برای عبور از CORS
-    const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(API_BASE_URL);
+    // 🛡️ استفاده از AllOrigins به صورت GET برای دور زدن کامل محدودیت CORS کنسول
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(TARGET_URL)}`;
 
     const response = await fetch(proxyUrl, {
-      method: "POST", // AllOrigins در حالت POST داده‌ها را به خوبی عبور می‌دهد
-      headers: { 
-        "Content-Type": "application/json"
-      },
+      method: "POST", // AllOrigins اجازه POST را از این طریق می‌دهد
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        method: "POST",
         headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${API_KEY}`
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`
         },
+        method: "POST",
         body: JSON.stringify(requestBody)
       })
     });
 
-    const wrapperData = await response.json();
-    // استخراج پاسخ اصلی از داخل محفظه AllOrigins
-    const data = JSON.parse(wrapperData.contents);
+    const wrapper = await response.json();
+    
+    // 🔍 بررسی اینکه آیا پاسخ معتبر است یا خطای HTML دریافت شده
+    if (!wrapper.contents || wrapper.contents.startsWith("<!DOCTYPE")) {
+      throw new Error("اختلال در دریافت پاسخ از سرور. لطفا از VPN استفاده کنید.");
+    }
+
+    const data = JSON.parse(wrapper.contents);
     const content = data.choices?.[0]?.message?.content || "";
     
     const getValue = (label: string) => {
@@ -78,7 +76,9 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     };
 
   } catch (error: any) {
-    console.error("❌ ابزار با اختلال شبکه مواجه شد:", error);
-    throw new Error("خطا در ارتباط با سرور هوش مصنوعی (اختلال CORS). لطفاً از VPN استفاده کنید یا لحظاتی دیگر تلاش کنید.");
+    console.error("❌ بن‌بست فنی در کنسول:", error.message);
+    throw new Error(error.message.includes("Unexpected token") 
+      ? "سرور هوش مصنوعی پاسخی ارسال نکرد. لطفا دوباره تلاش کنید." 
+      : error.message);
   }
 };
