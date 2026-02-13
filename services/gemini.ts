@@ -1,8 +1,8 @@
 import { ReceiptData } from "../types";
 
 const MODEL_NAME = "gemini-2.5-flash"; 
-// استفاده از پروکسی برای رفع خطای CORS که در کنسول مشاهده شد
-const API_BASE_URL = "https://corsproxy.io/?" + encodeURIComponent("https://api.gapgpt.app/v1/chat/completions");
+// استفاده از پروکسی AllOrigins که پایداری بیشتری نسبت به نسخه قبلی دارد
+const API_BASE_URL = "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://api.gapgpt.app/v1/chat/completions");
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
@@ -50,14 +50,18 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       body: JSON.stringify(requestBody)
     });
 
+    // مدیریت خطای 503 و عدم در دسترس بودن سرور
+    if (response.status === 503 || response.status === 500) {
+      throw new Error("سرور واسطه موقتاً در دسترس نیست. لطفاً چند لحظه دیگر دوباره تلاش کنید.");
+    }
+
     if (!response.ok) {
-      throw new Error(`خطای سرور: ${response.status}`);
+      throw new Error(`خطای شبکه: ${response.status}`);
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || "";
     
-    // متد استخراج دستی برای پایداری ۱۰۰٪ در برابر نویزهای متنی
     const getValue = (label: string) => {
       const regex = new RegExp(`${label}:\\s*(.*)`, "i");
       const match = content.match(regex);
@@ -74,8 +78,8 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       bankName: "-"
     };
 
-  } catch (error) {
-    console.error("❌ خطای CORS یا شبکه:", error);
-    throw new Error("ارتباط با سرور برقرار نشد. لطفا چند لحظه دیگر دوباره تلاش کنید.");
+  } catch (error: any) {
+    console.error("❌ Critical Error:", error.message);
+    throw new Error(error.message || "خطا در ارتباط با سرور هوش مصنوعی.");
   }
 };
