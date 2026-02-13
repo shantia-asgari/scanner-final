@@ -1,12 +1,7 @@
 import { ReceiptData } from "../types";
 
-const MODEL_NAME = "gemini-2.5-flash"; 
-// استفاده از پروکسی AllOrigins برای دور زدن محدودیت CORS مرورگر
-const TARGET_URL = "https://api.gapgpt.app/v1/chat/completions";
-const API_BASE_URL = `https://api.allorigins.win/raw?url=${encodeURIComponent(TARGET_URL)}`;
-
-// فراخوانی ایمن کلید از تنظیمات گیت‌هاب
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// ✅ آدرس جدید Worker شما جایگزین شد
+const WORKER_URL = "https://divine-fire-5ef3.shntiaasgariiii.workers.dev"; 
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   const base64Data = await new Promise<string>((resolve) => {
@@ -16,14 +11,14 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   });
 
   try {
-    const response = await fetch(API_BASE_URL, {
+    // ارسال به Worker (بدون ارسال کلید API، چون در سرور امن است)
+    const response = await fetch(WORKER_URL, {
       method: "POST",
       headers: { 
-        "Content-Type": "application/json", 
-        "Authorization": `Bearer ${API_KEY}` 
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: MODEL_NAME,
+        model: "gemini-2.5-flash",
         messages: [{
           role: "user",
           content: [
@@ -37,11 +32,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      // تشخیص اگر پاسخ به جای دیتا، صفحه خطای HTML بود
-      if (errorText.includes("<!DOCTYPE")) {
-        throw new Error("سد امنیتی فایروال مانع شد. لطفاً از VPN استفاده کنید.");
-      }
-      throw new Error(`خطای شبکه: ${response.status}`);
+      throw new Error(`خطای سرور (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
@@ -64,7 +55,7 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     };
 
   } catch (error: any) {
-    console.error("❌ بن‌بست فنی در کنسول:", error.message);
-    throw new Error(error.message);
+    console.error("❌ Error:", error.message);
+    throw new Error("خطا در ارتباط با سرور. لطفاً مطمئن شوید عکس واضح است.");
   }
 };
