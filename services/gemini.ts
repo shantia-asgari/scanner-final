@@ -1,7 +1,7 @@
 import { ReceiptData } from "../types";
 
 const MODEL_NAME = "gemini-2.5-flash"; 
-// استفاده از پروکسی AllOrigins که پایداری بیشتری نسبت به نسخه قبلی دارد
+// استفاده از پروکسی معتبر AllOrigins با قابلیت Raw برای دور زدن کامل محدودیت‌های CORS
 const API_BASE_URL = "https://api.allorigins.win/raw?url=" + encodeURIComponent("https://api.gapgpt.app/v1/chat/completions");
 const API_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
@@ -41,8 +41,12 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   };
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // افزایش زمان انتظار به ۶۰ ثانیه
+
     const response = await fetch(API_BASE_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: { 
         "Content-Type": "application/json", 
         "Authorization": `Bearer ${API_KEY}` 
@@ -50,13 +54,14 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
       body: JSON.stringify(requestBody)
     });
 
-    // مدیریت خطای 503 و عدم در دسترس بودن سرور
-    if (response.status === 503 || response.status === 500) {
-      throw new Error("سرور واسطه موقتاً در دسترس نیست. لطفاً چند لحظه دیگر دوباره تلاش کنید.");
+    clearTimeout(timeoutId);
+
+    if (response.status === 503) {
+      throw new Error("سرور واسطه موقتاً شلوغ است. لطفاً ۳۰ ثانیه دیگر دوباره تلاش کنید.");
     }
 
     if (!response.ok) {
-      throw new Error(`خطای شبکه: ${response.status}`);
+      throw new Error(`خطای سیستمی (${response.status}). در حال بررسی وضعیت اتصال...`);
     }
 
     const data = await response.json();
@@ -79,7 +84,10 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
     };
 
   } catch (error: any) {
-    console.error("❌ Critical Error:", error.message);
-    throw new Error(error.message || "خطا در ارتباط با سرور هوش مصنوعی.");
+    if (error.name === 'AbortError') {
+      throw new Error("زمان پاسخگویی سرور طولانی شد. لطفاً کیفیت اینترنت را چک کرده و دوباره امتحان کنید.");
+    }
+    console.error("❌ Error Details:", error.message);
+    throw new Error(error.message || "اختلال در ارتباط با شبکه هوش مصنوعی.");
   }
 };
