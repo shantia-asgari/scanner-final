@@ -1,7 +1,7 @@
 import { ReceiptData } from "../types";
 
-// :rocket: آدرس را به آی‌پی سرور آروان خودتان تغییر دهید
-const PROXY_URL = "http://188.213.196.62:3000/proxy"; 
+// این خط باعث می‌شود آدرس از تنظیمات خوانده شود، اگر نبود از آدرس پیش‌فرض استفاده کند
+const API_URL = import.meta.env.VITE_API_URL || "https://api.default-server.com/v1/analyze"; 
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
   const base64Data = await new Promise<string>((resolve) => {
