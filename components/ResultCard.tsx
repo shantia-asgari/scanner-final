@@ -12,13 +12,40 @@ interface ResultCardProps {
 const ResultCard: React.FC<ResultCardProps> = ({ label, value, icon, delay = 0, highlight = false }) => {
   const [copied, setCopied] = useState(false);
 
+  // --- تغییرات شروع شد (اصلاح تابع کپی) ---
   const handleCopy = () => {
-    if (value) {
-      navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    if (!value) return;
+
+    // روش fallback: ساخت یک المنت متنی مخفی برای کپی کردن در محیط‌های غیر امن (HTTP)
+    const textArea = document.createElement("textarea");
+    textArea.value = value;
+    
+    // استایل‌دهی برای مخفی کردن المنت از دید کاربر
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      // این دستور در همه محیط‌ها (HTTP و HTTPS) کار می‌کند
+      const successful = document.execCommand('copy');
+      if (successful) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        console.error("Copy command failed.");
+      }
+    } catch (err) {
+      console.error("Oops, unable to copy", err);
     }
+    
+    // پاک کردن المنت موقت
+    document.body.removeChild(textArea);
   };
+  // --- تغییرات تمام شد ---
 
   if (!value) return null;
 
