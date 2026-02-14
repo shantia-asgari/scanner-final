@@ -1,31 +1,35 @@
 import { ReceiptData } from "../types";
 
-// این خط باعث می‌شود آدرس از تنظیمات خوانده شود، اگر نبود از آدرس پیش‌فرض استفاده کند
-const API_URL = import.meta.env.VITE_API_URL || "https://api.default-server.com/v1/analyze"; 
+// ---------------------------------------------------------------------------
+// ۱. تنظیم آدرس API:
+// مقدار پیش‌فرض حذف شد تا حتماً از فایل .env خوانده شود.
+// ---------------------------------------------------------------------------
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+// هشدار امنیتی در کنسول جهت اطلاع‌رسانی به تیم فنی
+if (!API_URL) {
+  console.error("⚠️ CRITICAL WARNING: API URL is missing! Please check your .env file.");
+}
 
 export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
+  // تبدیل تصویر به فرمت Base64
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.readAsDataURL(file);
   });
 
+  // ساختار بدنه درخواست
+  // نکته: اگر بک‌ند شما ساختار ساده‌تری می‌خواهد، می‌توانید این بخش را ساده کنید
   const requestBody = {
-    model: "gemini-2.5-flash", // طبق مستندات GapGPT
+    model: "gemini-2.5-flash",
     messages: [
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: `Analyze this Iranian receipt. Extract these fields using this exact format:
-            AMOUNT: (digits)
-            TRACKING: (digits)
-            REFERENCE: (digits)
-            DATE: (YYYY/MM/DD)
-            TIME: (HH:MM)
-            DEPOSIT_ID: (If exists return 'ثبت' otherwise 'عدم ثبت')
-            RULES: 100% precision for digits. bankName is always '-'.`
+            text: "Extract receipt data" // متن ساده شده چون پردازش اصلی سمت سرور است
           },
           {
             type: "image_url",
@@ -33,40 +37,48 @@ export const extractReceiptData = async (file: File): Promise<ReceiptData> => {
           }
         ]
       }
-    ],
-    temperature: 0
+    ]
   };
 
   try {
-    const response = await fetch(PROXY_URL, {
+    // -----------------------------------------------------------------------
+    // ۲. ارسال درخواست به آدرس تنظیم شده در .env
+    // -----------------------------------------------------------------------
+    const response = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" }, // نیازی به Authorization در اینجا نیست
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody)
     });
 
-    if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
 
+    // دریافت داده‌ها به صورت JSON
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
 
-    const getValue = (label: string) => {
-      const regex = new RegExp(`${label}:\\s*(.*)`, "i");
-      const match = content.match(regex);
-      return match ? match[1].trim() : "";
-    };
+    // -----------------------------------------------------------------------
+    // ۳. پردازش پاسخ (مخصوص بک‌ند اختصاصی شما)
+    // فرض: بک‌ند شما داده‌ها را تمیز کرده و یک JSON ساده برمی‌گرداند.
+    // اگر ساختار خروجی بک‌ند شما متفاوت است، فقط خطوط زیر را تغییر دهید.
+    // -----------------------------------------------------------------------
+    
+    // اگر بک‌ند دیتا را مستقیم می‌فرستد:
+    const result = data; 
+    // یا اگر داخل فیلدی به نام data می‌گذارد: const result = data.data;
 
     return {
-      amount: getValue("AMOUNT"),
-      trackingCode: getValue("TRACKING"),
-      referenceNumber: getValue("REFERENCE"),
-      date: getValue("DATE"),
-      time: getValue("TIME"),
-      depositId: getValue("DEPOSIT_ID"),
-      bankName: "-"
+      amount: result.amount || result.AMOUNT || "0",
+      trackingCode: result.trackingCode || result.TRACKING || "-",
+      referenceNumber: result.referenceNumber || result.REFERENCE || "-",
+      date: result.date || result.DATE || "-",
+      time: result.time || result.TIME || "-",
+      depositId: result.depositId || result.DEPOSIT_ID || "-",
+      bankName: result.bankName || "-"
     };
 
   } catch (error) {
-    console.error("❌ Error:", error);
-    throw new Error("خطا در ارتباط با سرور واسط ایران. لطفا تنظیمات VPS را چک کنید.");
+    console.error("❌ Service Error:", error);
+    throw new Error("خطا در دریافت اطلاعات از سرور. لطفاً ارتباط با API را بررسی کنید.");
   }
 };
